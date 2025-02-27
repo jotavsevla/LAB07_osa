@@ -12,7 +12,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 OBJS = $(SRCS:.cpp=.o)
 
 # Nome do executável final
-TARGET = $(BIN_DIR)/btree
+TARGET = $(BIN_DIR)/BTreeDiskNote
 
 # Regra principal
 all: diretorio $(TARGET)

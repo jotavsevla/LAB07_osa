@@ -43,8 +43,8 @@ void getStats() {
     int maxHeight = 0;
 
     // Função recursiva para calcular estatísticas
-    function<void(PersistentBTreeNode<T>*, int)> calculateStats;
-    calculateStats = [&](PersistentBTreeNode<T>* node, int height) {
+    function<void(PersistentBTreeDiskNote<T>*, int)> calculateStats;
+    calculateStats = [&](PersistentBTreeDiskNote<T>* node, int height) {
         if (node == nullptr) return;
 
         totalNodes++;

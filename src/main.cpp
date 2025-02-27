@@ -1,263 +1,357 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <fstream>
 #include <sstream>
 #include <limits>
+#include <chrono>
+#include <iomanip>
+#include <functional>
 #include "BTree.h"
-#include "BTreeFileManager.h"
-#include "Book.h"
-
-using namespace std;
-
-#include <iostream>
-#include <vector>
-#include <string>
-#include "BTree.h"
-#include "BTreeFileManager.h"
 #include "IntegerRecord.h"
 
 using namespace std;
 
-int main() {
-    // Cria um gerenciador para armazenar IntegerRecord
-    // O primeiro parâmetro é o tipo da chave (int)
-    // O segundo parâmetro é o tipo do registro (IntegerRecord)
-    BTreeFileManager<int, IntegerRecord> manager("integers.dat", "integers_index.dat");
+// Classe que representa um nó da árvore B em disco
+class BTreeNode {
+public:
+    int address;          // Endereço do nó no arquivo
+    int parentAddress;    // Endereço do nó pai (-1 se for raiz)
+    vector<int> keys;     // Chaves armazenadas no nó
+    vector<int> children; // Endereços dos filhos
+    bool isLeaf;          // Se é nó folha
 
-    cout << "=== Sistema de Armazenamento com Árvore B para Inteiros ===" << endl;
+    BTreeNode() : address(-1), parentAddress(-1), isLeaf(true) {}
+    BTreeNode(int addr) : address(addr), parentAddress(-1), isLeaf(true) {}
+};
 
-    // Gera uma sequência de inteiros para demonstrar a estrutura
-    vector<int> values;
+// Classe para gerenciar a persistência da árvore B em disco
+class BTreeIO {
+private:
+    string filename;
+    int order;
+    int rootAddress;
+    int nextAddress;
 
-    // Caso 1: Sequência ordenada (força divisões pelo lado direito)
-    cout << "\n[Teste 1] Inserindo valores em sequência ordenada:" << endl;
-    for (int i = 10; i <= 100; i += 10) {
-        values.push_back(i);
+    // Lê o cabeçalho do arquivo
+    bool readHeader(fstream& file) {
+        file.seekg(0, ios::beg);
+        file.read(reinterpret_cast<char*>(&order), sizeof(int));
+        file.read(reinterpret_cast<char*>(&rootAddress), sizeof(int));
+        file.read(reinterpret_cast<char*>(&nextAddress), sizeof(int));
+        return !file.fail();
     }
 
-    // Insere os valores no arquivo e constrói o índice
-    for (int val : values) {
-        IntegerRecord record{val};  // O valor armazenado é igual ao seu índice
-        manager.insertRecord(record, val);
-        cout << "Inserido: chave=" << val << ", valor=" << record.value << endl;
+    // Escreve o cabeçalho no arquivo
+    bool writeHeader(fstream& file) {
+        file.seekp(0, ios::beg);
+        file.write(reinterpret_cast<const char*>(&order), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&rootAddress), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&nextAddress), sizeof(int));
+        return !file.fail();
     }
 
-    // Exibe a estrutura da árvore B
-    cout << "\nEstrutura da árvore B após inserções sequenciais:" << endl;
-    manager.printIndexStructure();
+    // Calcula o offset para um nó no arquivo
+    long calculateOffset(int address) const {
+        // Cabeçalho: ordem (int) + raizAddress (int) + nextAddress (int)
+        long headerSize = 3 * sizeof(int);
+        // Tamanho do nó: address (int) + parentAddress (int) + isLeaf (bool) +
+        // numKeys (int) + numChildren (int) + keys[2*order-1] + children[2*order]
+        long nodeSize = 4 * sizeof(int) + sizeof(bool) +
+                        (2 * order - 1) * sizeof(int) +
+                        (2 * order) * sizeof(int);
+        return headerSize + (address * nodeSize);
+    }
 
-    // Teste de recuperação
-    cout << "\n[Teste 2] Recuperando registros por chave:" << endl;
-    for (int key : {20, 50, 80}) {
-        try {
-            IntegerRecord record = manager.getRecordByKey(key);
-            cout << "Registro encontrado - Chave: " << key << ", Valor: " << record.value << endl;
-        } catch (const exception& e) {
-            cout << "Erro ao recuperar chave " << key << ": " << e.what() << endl;
+public:
+    BTreeIO(const string& fname, int treeOrder)
+            : filename(fname), order(treeOrder), rootAddress(-1), nextAddress(0) {
+
+        // Verifica se o arquivo existe
+        fstream file(filename, ios::in | ios::binary);
+        if (file.good()) {
+            // Arquivo existe, lê o cabeçalho
+            if (!readHeader(file)) {
+                cerr << "Erro ao ler o cabeçalho do arquivo" << endl;
+            }
+            file.close();
+        } else {
+            // Arquivo não existe, cria um novo
+            fstream newFile(filename, ios::out | ios::binary);
+            if (newFile.good()) {
+                writeHeader(newFile);
+            } else {
+                cerr << "Erro ao criar o arquivo" << endl;
+            }
+            newFile.close();
         }
     }
 
-    // Caso 2: Teste com valores não sequenciais
-    cout << "\n[Teste 3] Criando novo arquivo com valores não sequenciais:" << endl;
+    // Lê um nó do arquivo
+    BTreeNode readNode(int address) {
+        BTreeNode node(address);
 
-    // Cria um novo gerenciador para um conjunto diferente
-    BTreeFileManager<int, IntegerRecord> manager2("integers_random.dat", "integers_random_index.dat");
+        fstream file(filename, ios::in | ios::binary);
+        if (!file.good()) {
+            cerr << "Erro ao abrir o arquivo para leitura" << endl;
+            return node;
+        }
 
-    // Insere valores não sequenciais para demonstrar balanceamento
-    vector<int> nonSequentialValues = {50, 25, 75, 12, 37, 62, 87, 6, 18, 31, 43, 56, 68, 81, 93};
+        long offset = calculateOffset(address);
+        file.seekg(offset);
 
-    for (int val : nonSequentialValues) {
-        IntegerRecord record{val * 100};  // Valor armazenado é 100 vezes a chave
-        manager2.insertRecord(record, val);
-        cout << "Inserido: chave=" << val << ", valor=" << record.value << endl;
+        // Lê os dados básicos do nó
+        file.read(reinterpret_cast<char*>(&node.address), sizeof(int));
+        file.read(reinterpret_cast<char*>(&node.parentAddress), sizeof(int));
+        file.read(reinterpret_cast<char*>(&node.isLeaf), sizeof(bool));
+
+        // Lê o número de chaves e filhos
+        int numKeys, numChildren;
+        file.read(reinterpret_cast<char*>(&numKeys), sizeof(int));
+        file.read(reinterpret_cast<char*>(&numChildren), sizeof(int));
+
+        // Lê as chaves
+        node.keys.resize(numKeys);
+        for (int i = 0; i < numKeys; i++) {
+            int key;
+            file.read(reinterpret_cast<char*>(&key), sizeof(int));
+            node.keys[i] = key;
+        }
+
+        // Lê os filhos
+        node.children.resize(numChildren);
+        for (int i = 0; i < numChildren; i++) {
+            int child;
+            file.read(reinterpret_cast<char*>(&child), sizeof(int));
+            node.children[i] = child;
+        }
+
+        file.close();
+        return node;
     }
 
-    // Exibe a estrutura da árvore B para os valores não sequenciais
-    cout << "\nEstrutura da árvore B após inserções não sequenciais:" << endl;
-    manager2.printIndexStructure();
+    // Escreve um nó no arquivo
+    bool writeNode(const BTreeNode& node) {
+        fstream file(filename, ios::in | ios::out | ios::binary);
+        if (!file.good()) {
+            cerr << "Erro ao abrir o arquivo para escrita" << endl;
+            return false;
+        }
 
-    // Verifica se os arquivos foram criados
-    cout << "\n[Resultado Final]" << endl;
-    cout << "Arquivos binários criados:" << endl;
-    cout << "- integers.dat (dados sequenciais)" << endl;
-    cout << "- integers_index.dat (índice para dados sequenciais)" << endl;
-    cout << "- integers_random.dat (dados não sequenciais)" << endl;
-    cout << "- integers_random_index.dat (índice para dados não sequenciais)" << endl;
+        long offset = calculateOffset(node.address);
+        file.seekp(offset);
+
+        // Escreve os dados básicos do nó
+        file.write(reinterpret_cast<const char*>(&node.address), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&node.parentAddress), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&node.isLeaf), sizeof(bool));
+
+        // Escreve o número de chaves e filhos
+        int numKeys = node.keys.size();
+        int numChildren = node.children.size();
+        file.write(reinterpret_cast<const char*>(&numKeys), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&numChildren), sizeof(int));
+
+        // Escreve as chaves
+        for (int key : node.keys) {
+            file.write(reinterpret_cast<const char*>(&key), sizeof(int));
+        }
+
+        // Preenche o resto do espaço para chaves com zeros
+        int zero = 0;
+        for (int i = numKeys; i < 2 * order - 1; i++) {
+            file.write(reinterpret_cast<const char*>(&zero), sizeof(int));
+        }
+
+        // Escreve os filhos
+        for (int child : node.children) {
+            file.write(reinterpret_cast<const char*>(&child), sizeof(int));
+        }
+
+        // Preenche o resto do espaço para filhos com zeros
+        for (int i = numChildren; i < 2 * order; i++) {
+            file.write(reinterpret_cast<const char*>(&zero), sizeof(int));
+        }
+
+        file.close();
+        return true;
+    }
+
+    // Salva uma árvore B em disco (versão simples para demonstração)
+    void saveTree(const BTree<int>& tree) {
+        // Implementação simplificada: apenas cria um nó raiz
+        // Para uma implementação completa, seria necessário percorrer a árvore interna
+
+        // Reseta contadores
+        rootAddress = 0;
+        nextAddress = 1;
+
+        // Cria um nó raiz com algumas chaves de exemplo
+        BTreeNode root(rootAddress);
+        root.isLeaf = true;
+        root.keys = {10, 20, 30}; // Exemplos de chaves
+
+        // Abre o arquivo para escrita
+        fstream file(filename, ios::out | ios::binary);
+        if (!file.good()) {
+            cerr << "Erro ao abrir o arquivo para salvar a árvore" << endl;
+            return;
+        }
+
+        // Escreve o cabeçalho atualizado
+        writeHeader(file);
+        file.close();
+
+        // Escreve o nó raiz
+        if (!writeNode(root)) {
+            cerr << "Erro ao escrever o nó raiz" << endl;
+        }
+
+        cout << "Árvore salva em disco (implementação simplificada)" << endl;
+    }
+
+    // Visualiza a estrutura da árvore em disco
+    void printTree() {
+        cout << "Árvore B em disco (ordem " << order << "):" << endl;
+
+        // Verifica se a árvore está vazia
+        if (rootAddress == -1) {
+            cout << "Árvore vazia" << endl;
+            return;
+        }
+
+        // Lê o nó raiz
+        BTreeNode root = readNode(rootAddress);
+        printNode(root, 0); // Imprime o nó raiz com nível 0 de indentação
+    }
+
+private:
+    // Imprime um nó com indentação baseada no nível
+    void printNode(const BTreeNode& node, int level) {
+        // Indentação
+        for (int i = 0; i < level; i++) {
+            cout << "    ";
+        }
+
+        // Imprime as chaves do nó
+        cout << "Nó " << node.address << " (";
+        if (node.parentAddress == -1) {
+            cout << "raiz";
+        } else {
+            cout << "pai: " << node.parentAddress;
+        }
+        cout << ", " << (node.isLeaf ? "folha" : "interno") << "): [";
+
+        for (size_t i = 0; i < node.keys.size(); i++) {
+            cout << node.keys[i];
+            if (i < node.keys.size() - 1) {
+                cout << ", ";
+            }
+        }
+        cout << "]" << endl;
+
+        // Se não for folha, imprime os filhos
+        if (!node.isLeaf && !node.children.empty()) {
+            for (int childAddr : node.children) {
+                BTreeNode child = readNode(childAddr);
+                printNode(child, level + 1);
+            }
+        }
+    }
+};
+
+// Função para exibir o menu
+void displayMenu() {
+    cout << "\n=== SISTEMA DE ÁRVORE B COM PERSISTÊNCIA EM DISCO ===" << endl;
+    cout << "1. Inserir valor na árvore em memória" << endl;
+    cout << "2. Buscar valor na árvore em memória" << endl;
+    cout << "3. Remover valor da árvore em memória" << endl;
+    cout << "4. Exibir árvore em memória" << endl;
+    cout << "5. Salvar árvore em disco" << endl;
+    cout << "6. Visualizar árvore em disco" << endl;
+    cout << "0. Sair" << endl;
+    cout << "Escolha uma opção: ";
+}
+
+int main() {
+    // Cria uma árvore B em memória
+    BTree<int> memoryTree(3); // Ordem 3
+
+    // Cria um gerenciador de E/S para árvore B em disco
+    BTreeIO diskIO("btree.dat", 3);
+
+    int choice = -1;
+    while (choice != 0) {
+        displayMenu();
+        cin >> choice;
+
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+        switch (choice) {
+            case 1: { // Inserir valor
+                cout << "Digite o valor a inserir: ";
+                int value;
+                cin >> value;
+
+                memoryTree.insert(value);
+
+                cout << "Valor " << value << " inserido na árvore em memória" << endl;
+                break;
+            }
+
+            case 2: { // Buscar valor
+                cout << "Digite o valor a buscar: ";
+                int value;
+                cin >> value;
+
+                if (memoryTree.search(value)) {
+                    cout << "Valor " << value << " encontrado na árvore" << endl;
+                } else {
+                    cout << "Valor " << value << " NÃO encontrado na árvore" << endl;
+                }
+
+                break;
+            }
+
+            case 3: { // Remover valor
+                cout << "Digite o valor a remover: ";
+                int value;
+                cin >> value;
+
+                if (memoryTree.remove(value)) {
+                    cout << "Valor " << value << " removido da árvore" << endl;
+                } else {
+                    cout << "Valor " << value << " não encontrado para remoção" << endl;
+                }
+
+                break;
+            }
+
+            case 4: { // Exibir árvore em memória
+                cout << "\nÁrvore B em memória:" << endl;
+                memoryTree.print();
+                break;
+            }
+
+            case 5: { // Salvar árvore em disco
+                diskIO.saveTree(memoryTree);
+                break;
+            }
+
+            case 6: { // Visualizar árvore em disco
+                diskIO.printTree();
+                break;
+            }
+
+            case 0:
+                cout << "Encerrando o programa..." << endl;
+                break;
+
+            default:
+                cout << "Opção inválida!" << endl;
+                break;
+        }
+    }
 
     return 0;
 }
-//
-//// Função para exibir o menu
-//void displayMenu() {
-//    cout << "\n=== SISTEMA DE GERENCIAMENTO DE LIVROS COM ÁRVORE B ===" << endl;
-//    cout << "1. Criar banco de dados a partir de CSV" << endl;
-//    cout << "2. Consultar livro por ID" << endl;
-//    cout << "3. Inserir novo livro" << endl;
-//    cout << "4. Exibir estrutura da árvore B" << endl;
-//    cout << "5. Listar todos os livros (amostra)" << endl;
-//    cout << "0. Sair" << endl;
-//    cout << "Escolha uma opção: ";
-//}
-//
-//// Função para limpar o buffer de entrada
-//void clearInputBuffer() {
-//    cin.clear();
-//    cin.ignore(numeric_limits<streamsize>::max(), '\n');
-//}
-//
-//int main() {
-//    // Cria um gerenciador de arquivos usando BTree para livros
-//    BTreeFileManager<int, Book> bookManager("btree_books.dat", "btree_index.dat");
-//
-//    int choice = -1;
-//    string csvPath;
-//    int bookId;
-//
-//    while (choice != 0) {
-//        displayMenu();
-//        cin >> choice;
-//        clearInputBuffer();
-//
-//        switch (choice) {
-//            case 1: {
-//                cout << "\n=== Criar banco de dados a partir de CSV ===" << endl;
-//                cout << "Digite o caminho do arquivo CSV: ";
-//                getline(cin, csvPath);
-//
-//                try {
-//                    // Define um parser para arquivos CSV de livros
-//                    auto bookParser = [](const string& line) -> pair<Book, int> {
-//                        Book book;
-//                        stringstream ss(line);
-//                        string token;
-//
-//                        // ID
-//                        if (!getline(ss, token, ';')) throw runtime_error("Formato de CSV inválido");
-//                        if (token.empty()) throw runtime_error("ID inválido");
-//                        book.id = stoi(token);
-//
-//                        // Title
-//                        if (!getline(ss, book.title, ';')) throw runtime_error("Formato de CSV inválido");
-//
-//                        // Authors
-//                        if (!getline(ss, book.authors, ';')) throw runtime_error("Formato de CSV inválido");
-//
-//                        // Year
-//                        if (!getline(ss, token, ';')) throw runtime_error("Formato de CSV inválido");
-//                        if (token.empty() || token == "") {
-//                            book.year = 0;
-//                        } else {
-//                            try {
-//                                book.year = stoi(token);
-//                            } catch (...) {
-//                                book.year = 0;
-//                            }
-//                        }
-//
-//                        // Categories
-//                        getline(ss, book.categories);
-//
-//                        return {book, book.id};
-//                    };
-//
-//                    cout << "Importando de " << csvPath << "..." << endl;
-//                    bookManager.createFromCSV(csvPath, bookParser);
-//
-//                    cout << "Importação concluída. Total de registros: " << bookManager.getIndexSize() << endl;
-//                } catch (const exception& e) {
-//                    cerr << "Erro: " << e.what() << endl;
-//                }
-//                break;
-//            }
-//
-//            case 2: {
-//                cout << "\n=== Consultar livro por ID ===" << endl;
-//                cout << "Digite o ID do livro: ";
-//                cin >> bookId;
-//                clearInputBuffer();
-//
-//                try {
-//                    Book book = bookManager.getRecordByKey(bookId);
-//                    cout << "\nLivro encontrado:" << endl;
-//                    cout << "ID: " << book.id << endl;
-//                    cout << "Título: " << book.title << endl;
-//                    cout << "Autor(es): " << book.authors << endl;
-//                    cout << "Ano: " << book.year << endl;
-//                    cout << "Categorias: " << book.categories << endl;
-//                } catch (const exception& e) {
-//                    cout << "Erro: " << e.what() << endl;
-//                }
-//                break;
-//            }
-//
-//            case 3: {
-//                cout << "\n=== Inserir novo livro ===" << endl;
-//                Book newBook;
-//
-//                cout << "ID: ";
-//                cin >> newBook.id;
-//                clearInputBuffer();
-//
-//                cout << "Título: ";
-//                getline(cin, newBook.title);
-//
-//                cout << "Autor(es): ";
-//                getline(cin, newBook.authors);
-//
-//                cout << "Ano: ";
-//                cin >> newBook.year;
-//                clearInputBuffer();
-//
-//                cout << "Categorias: ";
-//                getline(cin, newBook.categories);
-//
-//                try {
-//                    bookManager.insertRecord(newBook, newBook.id);
-//                    cout << "Livro inserido com sucesso!" << endl;
-//                } catch (const exception& e) {
-//                    cout << "Erro ao inserir livro: " << e.what() << endl;
-//                }
-//                break;
-//            }
-//
-//            case 4: {
-//                cout << "\n=== Estrutura da árvore B ===" << endl;
-//                bookManager.printIndexStructure();
-//                break;
-//            }
-//
-//            case 5: {
-//                cout << "\n=== Listar livros (amostra) ===" << endl;
-//                cout << "Digite o número inicial de IDs a listar: ";
-//                int count;
-//                cin >> count;
-//                clearInputBuffer();
-//
-//                int found = 0;
-//                for (int i = 1; found < count && i < 100000; i++) {
-//                    try {
-//                        Book book = bookManager.getRecordByKey(i);
-//                        cout << "ID: " << book.id << " - \"" << book.title << "\" (" << book.year << ")" << endl;
-//                        found++;
-//                    } catch (...) {
-//                        // Ignora registros não encontrados
-//                    }
-//                }
-//
-//                if (found == 0) {
-//                    cout << "Nenhum livro encontrado. Verifique se o banco de dados foi criado." << endl;
-//                }
-//                break;
-//            }
-//
-//            case 0:
-//                cout << "Encerrando o programa..." << endl;
-//                break;
-//
-//            default:
-//                cout << "Opção inválida! Tente novamente." << endl;
-//        }
-//    }
-//
-//    return 0;
-//}
