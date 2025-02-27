@@ -10,11 +10,11 @@ public:
     int value;
 
     // Método de serialização - converte o inteiro em uma sequência de bytes
-    std::string pack() const {
+    string pack() const {
         int size = sizeof(int);  // Tamanho do dado (4 bytes para um int)
 
         // Buffer para armazenar o tamanho + o valor
-        std::string buffer;
+        string buffer;
         buffer.resize(sizeof(int));  // Primeiro int armazena o tamanho
         memcpy(&buffer[0], &size, sizeof(int));
 
@@ -26,7 +26,7 @@ public:
     }
 
     // Método de desserialização - converte bytes de volta para o inteiro
-    bool unpack(const std::string& buffer) {
+    bool unpack(const string& buffer) {
         if (buffer.size() < sizeof(int) * 2) {
             return false;  // Buffer muito pequeno
         }

@@ -8,7 +8,7 @@
 #include <functional>
 
 using namespace std;
-using std::function;
+using function;
 
 class Book {
 public:
