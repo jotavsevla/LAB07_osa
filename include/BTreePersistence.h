@@ -1,10 +1,11 @@
 //
 // Created by João on 27/02/25.
 //
-#include "BTree.h"
-using namespace std;
 #ifndef LAB07_OSA_BTREEPERSISTENCE_H
 #define LAB07_OSA_BTREEPERSISTENCE_H
+
+#include "BTree.h"
+using namespace std;
 /**
      * @brief Imprime a estrutura da árvore
      */
@@ -43,8 +44,8 @@ void getStats() {
     int maxHeight = 0;
 
     // Função recursiva para calcular estatísticas
-    function<void(PersistentBTreeDiskNote<T>*, int)> calculateStats;
-    calculateStats = [&](PersistentBTreeDiskNote<T>* node, int height) {
+    function<void(PersistentBTreeDiskNode<T>*, int)> calculateStats;
+    calculateStats = [&](PersistentBTreeDiskNode<T>* node, int height) {
         if (node == nullptr) return;
 
         totalNodes++;

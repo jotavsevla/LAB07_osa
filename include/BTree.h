@@ -11,15 +11,15 @@ using namespace std;
 // - A raiz tem pelo menos 2 filhos se não for folha
 // - Todas as folhas aparecem no mesmo nível
 template <typename T>
-class BTreeDiskNote {
+class BTreeNode {
 public:
     T keys[5];         // Um nó pode conter até 5 chaves
-    BTreeDiskNote* children[6]; // Um nó pode ter até 6 filhos
+    BTreeNode* children[6]; // Um nó pode ter até 6 filhos
     int n;             // Número atual de chaves
     bool leaf;         // Verdadeiro se o nó for folha
 
     // Construtor
-    BTreeDiskNote(bool isLeaf = true) : n(0), leaf(isLeaf) {
+    BTreeNode(bool isLeaf = true) : n(0), leaf(isLeaf) {
         // Inicializa todos os ponteiros de filhos como nullptr
         for (int i = 0; i < 6; i++) {
             children[i] = nullptr;
@@ -27,7 +27,7 @@ public:
     }
 
     // Destrutor para limpar a memória recursivamente
-    ~BTreeDiskNote() {
+    ~BTreeNode() {
         if (!leaf) {
             for (int i = 0; i <= n; i++) {
                 if (children[i] != nullptr) {
@@ -42,14 +42,14 @@ public:
 template <typename T>
 class BTree {
 private:
-    BTreeDiskNote<T>* root; // Ponteiro para raiz da árvore
+    BTreeNode<T>* root; // Ponteiro para raiz da árvore
     int t;              // Grau mínimo (para ordem 3, t=3)
 
     // Função para dividir um filho cheio durante inserção
-    void splitChild(BTreeDiskNote<T>* x, int i) {
+    void splitChild(BTreeNode<T>* x, int i) {
         // Cria um novo nó que vai receber metade das chaves de y
-        BTreeDiskNote<T>* y = x->children[i];
-        BTreeDiskNote<T>* z = new BTreeDiskNote<T>(y->leaf);
+        BTreeNode<T>* y = x->children[i];
+        BTreeNode<T>* z = new BTreeNode<T>(y->leaf);
 
         // Define z para receber t-1 (2) chaves de y
         z->n = t - 1;
@@ -89,7 +89,7 @@ private:
     }
 
     // Função para inserir em um nó não-cheio
-    void insertNonFull(BTreeDiskNote<T>* x, T k) {
+    void insertNonFull(BTreeNode<T>* x, T k) {
         // Inicializa o índice como o último elemento
         int i = x->n - 1;
 
@@ -126,7 +126,7 @@ private:
     }
 
     // Função para percorrer a árvore (inorder)
-    void traverse(BTreeDiskNote<T>* x) {
+    void traverse(BTreeNode<T>* x) {
         int i;
         for (i = 0; i < x->n; i++) {
             // Primeiro visita o filho da esquerda
@@ -144,7 +144,7 @@ private:
     }
 
     // Função para buscar uma chave na árvore
-    BTreeDiskNote<T>* search(BTreeDiskNote<T>* x, T k) {
+    BTreeNode<T>* search(BTreeNode<T>* x, T k) {
         // Encontra a primeira chave maior ou igual a k
         int i = 0;
         while (i < x->n && k > x->keys[i]) {
@@ -166,10 +166,10 @@ private:
     }
 
     // Função para obter o predecessor
-    T getPredecessor(BTreeDiskNote<T>* node, int idx) {
+    T getPredecessor(BTreeNode<T>* node, int idx) {
         // Continua movendo para o filho mais à direita
         // até chegar a uma folha
-        BTreeDiskNote<T>* current = node->children[idx];
+        BTreeNode<T>* current = node->children[idx];
         while (!current->leaf) {
             current = current->children[current->n];
         }
@@ -178,10 +178,10 @@ private:
     }
 
     // Função para obter o sucessor
-    T getSuccessor(BTreeDiskNote<T>* node, int idx) {
+    T getSuccessor(BTreeNode<T>* node, int idx) {
         // Continua movendo para o filho mais à esquerda
         // até chegar a uma folha
-        BTreeDiskNote<T>* current = node->children[idx + 1];
+        BTreeNode<T>* current = node->children[idx + 1];
         while (!current->leaf) {
             current = current->children[0];
         }
@@ -190,7 +190,7 @@ private:
     }
 
     // Função para preencher o nó filho que tem menos que o mínimo de chaves
-    void fill(BTreeDiskNote<T>* node, int idx) {
+    void fill(BTreeNode<T>* node, int idx) {
         // Se o filho anterior tem chaves extras
         if (idx != 0 && node->children[idx - 1]->n >= t) {
             borrowFromPrev(node, idx);
@@ -210,9 +210,9 @@ private:
     }
 
     // Função para pegar emprestado do irmão anterior
-    void borrowFromPrev(BTreeDiskNote<T>* node, int idx) {
-        BTreeDiskNote<T>* child = node->children[idx];
-        BTreeDiskNote<T>* sibling = node->children[idx - 1];
+    void borrowFromPrev(BTreeNode<T>* node, int idx) {
+        BTreeNode<T>* child = node->children[idx];
+        BTreeNode<T>* sibling = node->children[idx - 1];
 
         // Desloca todas as chaves em child uma posição para frente
         for (int i = child->n - 1; i >= 0; --i) {
@@ -243,9 +243,9 @@ private:
     }
 
     // Função para pegar emprestado do irmão seguinte
-    void borrowFromNext(BTreeDiskNote<T>* node, int idx) {
-        BTreeDiskNote<T>* child = node->children[idx];
-        BTreeDiskNote<T>* sibling = node->children[idx + 1];
+    void borrowFromNext(BTreeNode<T>* node, int idx) {
+        BTreeNode<T>* child = node->children[idx];
+        BTreeNode<T>* sibling = node->children[idx + 1];
 
         // A chave idx do nó vai para child
         child->keys[child->n] = node->keys[idx];
@@ -276,9 +276,9 @@ private:
     }
 
     // Função para mesclar nós
-    void merge(BTreeDiskNote<T>* node, int idx) {
-        BTreeDiskNote<T>* child = node->children[idx];
-        BTreeDiskNote<T>* sibling = node->children[idx + 1];
+    void merge(BTreeNode<T>* node, int idx) {
+        BTreeNode<T>* child = node->children[idx];
+        BTreeNode<T>* sibling = node->children[idx + 1];
 
         // Insere a chave do nó em child
         child->keys[t - 1] = node->keys[idx];
@@ -315,7 +315,7 @@ private:
     }
 
     // Função para remover um nó não-folha
-    void removeFromNonLeaf(BTreeDiskNote<T>* node, int idx) {
+    void removeFromNonLeaf(BTreeNode<T>* node, int idx) {
         T k = node->keys[idx];
 
         // Caso 3a: Se o filho que precede k tem pelo menos t chaves
@@ -340,7 +340,7 @@ private:
     }
 
     // Função para remover de um nó folha
-    void removeFromLeaf(BTreeDiskNote<T>* node, int idx) {
+    void removeFromLeaf(BTreeNode<T>* node, int idx) {
         // Desloca todas as chaves após idx
         for (int i = idx + 1; i < node->n; ++i) {
             node->keys[i - 1] = node->keys[i];
@@ -351,7 +351,7 @@ private:
     }
 
     // Função principal para remover uma chave da árvore
-    void remove(BTreeDiskNote<T>* node, T k) {
+    void remove(BTreeNode<T>* node, T k) {
         int idx = 0;
         // Encontra o índice da chave a ser removida
         while (idx < node->n && node->keys[idx] < k) {
@@ -394,7 +394,7 @@ private:
 
 public:
     // Construtor
-    BTree() : root(new BTreeDiskNote<T>(true)), t(3) {}  // t=3 para árvore de ordem 3
+    BTree() : root(new BTreeNode<T>(true)), t(3) {}  // t=3 para árvore de ordem 3
 
     // Destrutor
     ~BTree() {
@@ -411,12 +411,12 @@ public:
         }
     }
     // Retorna o ponteiro para o nó raiz (necessário para o gerenciador de arquivos)
-    BTreeDiskNote<T>* getRoot() const {
+    BTreeNode<T>* getRoot() const {
         return root;
     }
 
     // Função para buscar uma chave
-    BTreeDiskNote<T>* search(T k) {
+    BTreeNode<T>* search(T k) {
         return (root == nullptr) ? nullptr : search(root, k);
     }
 
@@ -425,7 +425,7 @@ public:
         // Se a raiz estiver cheia, a árvore cresce em altura
         if (root->n == 2 * t - 1) {
             // Aloca nova raiz
-            BTreeDiskNote<T>* s = new BTreeDiskNote<T>(false);
+            BTreeNode<T>* s = new BTreeNode<T>(false);
 
             // Faz a antiga raiz ser filha da nova
             s->children[0] = root;
@@ -460,7 +460,7 @@ public:
 
         // Se a raiz ficar sem chaves
         if (root->n == 0) {
-            BTreeDiskNote<T>* tmp = root;
+            BTreeNode<T>* tmp = root;
             if (root->leaf) {
                 root = nullptr;
             } else {
@@ -482,7 +482,7 @@ public:
     void clear() {
         if (root != nullptr) {
             delete root;
-            root = new BTreeDiskNote<T>(true);
+            root = new BTreeNode<T>(true);
         }
     }
 
@@ -500,7 +500,7 @@ public:
 
 private:
     // Função auxiliar para imprimir a árvore em níveis
-    void printLevel(BTreeDiskNote<T>* node, int level) {
+    void printLevel(BTreeNode<T>* node, int level) {
         if (node == nullptr) return;
 
         cout << "Nível " << level << ": ";
