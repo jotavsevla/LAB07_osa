@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <functional>
 #include "BTree.h"
+#include "BTreePersistence.h"
 
 // Classe de entrada para índice usando árvore B
 template <typename KeyType, typename ValueType>
@@ -73,8 +74,8 @@ private:
         vector<BTreeEntry<KeyType, long>> entries;
 
         // Função para percorrer a árvore e coletar entradas em ordem
-        function<void(BTreeDiskNode<BTreeEntry<KeyType, long>>*)> traverseInorder;
-        traverseInorder = [&](BTreeDiskNode<BTreeEntry<KeyType, long>>* node) {
+        function<void(BTreeNode<BTreeEntry<KeyType, long>>*)> traverseInorder;
+        traverseInorder = [&](BTreeNode<BTreeEntry<KeyType, long>>* node) {
             if (!node || node->leaf) {
                 if (node) {
                     for (int i = 0; i < node->n; i++) {
@@ -174,7 +175,7 @@ public:
         BTreeEntry<KeyType, long> searchEntry{key, 0};
 
         // Busca na árvore B
-        BTreeDiskNode<BTreeEntry<KeyType, long>>* node = indexTree.search(searchEntry);
+        BTreeNode<BTreeEntry<KeyType, long>>* node = indexTree.search(searchEntry);
         if (!node) {
             throw runtime_error("Registro não encontrado");
         }
@@ -290,8 +291,8 @@ public:
         cout << "Estrutura do índice (Árvore B):" << endl;
 
         // Implementa uma visualização da árvore aqui
-        function<void(BTreeDiskNode<BTreeEntry<KeyType, long>>*, int, string)>
-                printNode = [&](BTreeDiskNode<BTreeEntry<KeyType, long>>* node, int depth, string prefix) {
+        function<void(BTreeNode<BTreeEntry<KeyType, long>>*, int, string)>
+                printNode = [&](BTreeNode<BTreeEntry<KeyType, long>>* node, int depth, string prefix) {
             if (node == nullptr) return;
 
             // Imprime a indentação e o prefixo
@@ -337,8 +338,8 @@ public:
         // Conta os elementos na árvore
         size_t count = 0;
 
-        function<void(BTreeDiskNode<BTreeEntry<KeyType, long>>*)> countNodes;
-        countNodes = [&](BTreeDiskNode<BTreeEntry<KeyType, long>>* node) {
+        function<void(BTreeNode<BTreeEntry<KeyType, long>>*)> countNodes;
+        countNodes = [&](BTreeNode<BTreeEntry<KeyType, long>>* node) {
             if (!node) return;
 
             count += node->n; // Adiciona as chaves deste nó

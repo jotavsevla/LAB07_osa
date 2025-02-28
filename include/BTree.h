@@ -2,6 +2,10 @@
 #define BTREE_H
 
 #include <iostream>
+#include <fstream>
+#include <queue>
+#include <unordered_map>
+#include <vector>
 
 using namespace std;
 // Classe para nós em uma árvore B de ordem 3
@@ -18,11 +22,16 @@ public:
     int n;             // Número atual de chaves
     bool leaf;         // Verdadeiro se o nó for folha
 
+    // Adicionado para persistência
+    int pageId;        // ID da página do nó no armazenamento
+    int childIds[6];   // IDs dos filhos (para lazy loading)
+
     // Construtor
-    BTreeNode(bool isLeaf = true) : n(0), leaf(isLeaf) {
+    BTreeNode(bool isLeaf = true) : n(0), leaf(isLeaf), pageId(-1) {
         // Inicializa todos os ponteiros de filhos como nullptr
         for (int i = 0; i < 6; i++) {
             children[i] = nullptr;
+            childIds[i] = -1; // Inicializa IDs de filho como inválidos
         }
     }
 
@@ -497,6 +506,180 @@ public:
         printLevel(root, 0);
         cout << endl;
     }
+    /**
+ * Salva a árvore B em um arquivo
+ * @param filename Nome do arquivo para salvar
+ * @return true se salvou com sucesso, false caso contrário
+ */
+    bool saveToFile(const std::string& filename) {
+        std::ofstream file(filename, std::ios::binary | std::ios::trunc);
+        if (!file) {
+            std::cerr << "Erro ao abrir arquivo para escrita: " << filename << std::endl;
+            return false;
+        }
+
+        // Salva informações da árvore (grau mínimo)
+        file.write(reinterpret_cast<const char*>(&t), sizeof(t));
+
+        // Realiza um percurso em largura para salvar todos os nós
+        if (root != nullptr) {
+            std::queue<BTreeNode<T>*> nodeQueue;
+            nodeQueue.push(root);
+
+            // Contador para atribuir IDs temporários aos nós
+            int nodeId = 0;
+            std::unordered_map<BTreeNode<T>*, int> nodeIds;
+
+            // Primeiro passo: atribui IDs a todos os nós
+            std::queue<BTreeNode<T>*> idQueue;
+            idQueue.push(root);
+
+            while (!idQueue.empty()) {
+                BTreeNode<T>* node = idQueue.front();
+                idQueue.pop();
+
+                nodeIds[node] = nodeId++;
+
+                if (!node->leaf) {
+                    for (int i = 0; i <= node->n; i++) {
+                        if (node->children[i] != nullptr) {
+                            idQueue.push(node->children[i]);
+                        }
+                    }
+                }
+            }
+
+            // Segundo passo: escreve o número total de nós
+            int totalNodes = nodeIds.size();
+            file.write(reinterpret_cast<const char*>(&totalNodes), sizeof(totalNodes));
+
+            // Terceiro passo: salva cada nó
+            while (!nodeQueue.empty()) {
+                BTreeNode<T>* node = nodeQueue.front();
+                nodeQueue.pop();
+
+                // Escreve ID do nó
+                int id = nodeIds[node];
+                file.write(reinterpret_cast<const char*>(&id), sizeof(id));
+
+                // Escreve se é folha
+                bool isLeaf = node->leaf;
+                file.write(reinterpret_cast<const char*>(&isLeaf), sizeof(isLeaf));
+
+                // Escreve número de chaves
+                file.write(reinterpret_cast<const char*>(&node->n), sizeof(node->n));
+
+                // Escreve as chaves
+                for (int i = 0; i < node->n; i++) {
+                    file.write(reinterpret_cast<const char*>(&node->keys[i]), sizeof(T));
+                }
+
+                // Escreve IDs dos filhos (se não for folha)
+                if (!node->leaf) {
+                    for (int i = 0; i <= node->n; i++) {
+                        int childId = (node->children[i] != nullptr) ?
+                                      nodeIds[node->children[i]] : -1;
+                        file.write(reinterpret_cast<const char*>(&childId), sizeof(childId));
+
+                        if (node->children[i] != nullptr) {
+                            nodeQueue.push(node->children[i]);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Árvore vazia - escreve 0 nós
+            int totalNodes = 0;
+            file.write(reinterpret_cast<const char*>(&totalNodes), sizeof(totalNodes));
+        }
+
+        file.close();
+        return true;
+    }
+
+/**
+ * Carrega a árvore B de um arquivo
+ * @param filename Nome do arquivo para carregar
+ * @return true se carregou com sucesso, false caso contrário
+ */
+    bool loadFromFile(const std::string& filename) {
+        std::ifstream file(filename, std::ios::binary);
+        if (!file) {
+            std::cerr << "Erro ao abrir arquivo para leitura: " << filename << std::endl;
+            return false;
+        }
+
+        // Limpa a árvore atual
+        clear();
+
+        // Lê o grau mínimo
+        file.read(reinterpret_cast<char*>(&t), sizeof(t));
+
+        // Lê número total de nós
+        int totalNodes;
+        file.read(reinterpret_cast<char*>(&totalNodes), sizeof(totalNodes));
+
+        if (totalNodes == 0) {
+            // Árvore vazia
+            file.close();
+            return true;
+        }
+
+        // Cria todos os nós primeiro
+        std::vector<BTreeNode<T>*> nodes(totalNodes);
+        std::vector<std::vector<int>> childIds(totalNodes);
+
+        for (int i = 0; i < totalNodes; i++) {
+            // Lê ID do nó
+            int id;
+            file.read(reinterpret_cast<char*>(&id), sizeof(id));
+
+            // Lê se é folha
+            bool isLeaf;
+            file.read(reinterpret_cast<char*>(&isLeaf), sizeof(isLeaf));
+
+            // Cria o nó
+            nodes[id] = new BTreeNode<T>(isLeaf);
+
+            // Lê número de chaves
+            file.read(reinterpret_cast<char*>(&nodes[id]->n), sizeof(nodes[id]->n));
+
+            // Lê as chaves
+            for (int j = 0; j < nodes[id]->n; j++) {
+                file.read(reinterpret_cast<char*>(&nodes[id]->keys[j]), sizeof(T));
+            }
+
+            // Lê IDs dos filhos (se não for folha)
+            if (!isLeaf) {
+                childIds[id].resize(nodes[id]->n + 1);
+                for (int j = 0; j <= nodes[id]->n; j++) {
+                    int childId;
+                    file.read(reinterpret_cast<char*>(&childId), sizeof(childId));
+                    childIds[id][j] = childId;
+                }
+            }
+        }
+
+        // Conecta os nós (estabelece relações pai-filho)
+        for (int i = 0; i < totalNodes; i++) {
+            if (!nodes[i]->leaf) {
+                for (int j = 0; j <= nodes[i]->n; j++) {
+                    int childId = childIds[i][j];
+                    if (childId != -1) {
+                        nodes[i]->children[j] = nodes[childId];
+                    } else {
+                        nodes[i]->children[j] = nullptr;
+                    }
+                }
+            }
+        }
+
+        // Atribui a raiz
+        root = nodes[0];
+
+        file.close();
+        return true;
+    }
 
 private:
     // Função auxiliar para imprimir a árvore em níveis
@@ -515,6 +698,9 @@ private:
             }
         }
     }
+
+
 };
+
 
 #endif // BTREE_H

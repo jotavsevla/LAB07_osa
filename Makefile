@@ -1,40 +1,46 @@
-# Compilador e flags
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude
+CXXFLAGS = -std=c++17 -Wall -Wextra -g -Iinclude
 
-# Diretórios
 SRC_DIR = src
-INCLUDE_DIR = include
+OBJ_DIR = obj
 BIN_DIR = bin
+INCLUDE_DIR = include
 
-# Encontrar todos os arquivos fonte
+# Encontra todos os arquivos .cpp
 SRCS = $(wildcard $(SRC_DIR)/*.cpp)
-OBJS = $(SRCS:.cpp=.o)
+# Substitui o caminho do diretório src por obj e a extensão .cpp por .o
+OBJS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
 # Nome do executável final
-TARGET = $(BIN_DIR)/BTreeDiskNode
+TARGET = $(BIN_DIR)/btree_test
 
 # Regra principal
-all: diretorio $(TARGET)
+all: directories $(TARGET)
 
-# Criar diretório para o binário
-diretorio:
+# Cria os diretórios necessários
+directories:
+	mkdir -p $(OBJ_DIR)
 	mkdir -p $(BIN_DIR)
 
-# Regra para o executável principal
+# Regra para o executável
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Regra para compilar cada arquivo .cpp em .o
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.cpp
+# Regra para os objetos
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Regra para limpar arquivos gerados
-clean:
-	rm -f $(SRC_DIR)/*.o $(TARGET)
-
-# Regra para executar o programa
+# Regra para testar o programa
 run: all
 	./$(TARGET)
 
-.PHONY: all diretorio clean run
+# Regra para visualizar a árvore (requer Graphviz)
+visualize: run
+	dot -Tpng btree_visual.dot -o btree_visual.png
+	xdg-open btree_visual.png 2>/dev/null || open btree_visual.png 2>/dev/null || echo "Abra manualmente o arquivo btree_visual.png"
+
+# Regra para limpar arquivos gerados
+clean:
+	rm -rf $(OBJ_DIR) $(BIN_DIR) *.dat *.dot *.png
+
+.PHONY: all directories run visualize clean

@@ -14,8 +14,8 @@ template <typename KeyType>
 struct BTreeDiskNode {
     int address;       // Endereço do nó no arquivo
     int parentAddress; // Endereço do nó pai (-1 se for raiz)
-    std::vector<KeyType> keys;  // Chaves armazenadas neste nó
-    std::vector<int> childAddresses; // Endereços dos filhos (vazio se for folha)
+    vector<KeyType> keys;  // Chaves armazenadas neste nó
+    vector<int> childAddresses; // Endereços dos filhos (vazio se for folha)
     bool isLeaf;       // Flag que indica se é um nó folha
 
     BTreeDiskNode(int addr = -1, bool leaf = true)
@@ -25,13 +25,13 @@ struct BTreeDiskNode {
 template <typename KeyType, typename AddressType>
 class BTreeDisk {
 private:
-    std::string indexFilePath;  // Caminho do arquivo de índice
+    string indexFilePath;  // Caminho do arquivo de índice
     int order;                  // Ordem da árvore B (máximo de chaves = 2*order-1)
     int rootAddress;            // Endereço do nó raiz no arquivo
     int nextAddress;            // Próximo endereço disponível para alocação
 
     // Cache para nós já lidos do disco (otimização)
-    std::unordered_map<int, BTreeDiskNode<KeyType> > nodeCache;
+    unordered_map<int, BTreeDiskNode<KeyType> > nodeCache;
 
     // Métodos auxiliares para manipulação de arquivo
     void writeNodeToDisk(const BTreeDiskNode<KeyType>& node);
@@ -46,7 +46,7 @@ private:
     bool searchKeyInNode(const BTreeDiskNode<KeyType>& node, const KeyType& key, AddressType& dataAddress) const;
 
 public:
-    BTreeDisk(const std::string& filePath, int btreeOrder);
+    BTreeDisk(const string& filePath, int btreeOrder);
     ~BTreeDisk();
 
     // Operações básicas
@@ -66,11 +66,11 @@ public:
 // ==== IMPLEMENTAÇÃO DOS MÉTODOS ====
 
 template <typename KeyType, typename AddressType>
-BTreeDisk<KeyType, AddressType>::BTreeDisk(const std::string& filePath, int btreeOrder)
+BTreeDisk<KeyType, AddressType>::BTreeDisk(const string& filePath, int btreeOrder)
         : indexFilePath(filePath), order(btreeOrder), rootAddress(-1), nextAddress(0) {
 
     // Verifica se o arquivo de índice já existe
-    std::ifstream fileCheck(indexFilePath, std::ios::binary);
+    ifstream fileCheck(indexFilePath, ios::binary);
     if (fileCheck.good()) {
         fileCheck.close();
         loadFromFile();
@@ -93,17 +93,17 @@ BTreeDisk<KeyType, AddressType>::~BTreeDisk() {
 
 template <typename KeyType, typename AddressType>
 void BTreeDisk<KeyType, AddressType>::writeHeader() {
-    std::ofstream indexFile(indexFilePath, std::ios::binary | std::ios::out | std::ios::in);
+    ofstream indexFile(indexFilePath, ios::binary | ios::out | ios::in);
     if (!indexFile) {
-        indexFile.open(indexFilePath, std::ios::binary | std::ios::out);
+        indexFile.open(indexFilePath, ios::binary | ios::out);
     }
 
     if (!indexFile) {
-        throw std::runtime_error("Não foi possível abrir o arquivo de índice para escrita (cabeçalho)");
+        throw runtime_error("Não foi possível abrir o arquivo de índice para escrita (cabeçalho)");
     }
 
     // Posiciona no início do arquivo
-    indexFile.seekp(0, std::ios::beg);
+    indexFile.seekp(0, ios::beg);
 
     // Escreve o cabeçalho: ordem, endereço raiz, próximo endereço disponível
     indexFile.write(reinterpret_cast<const char*>(&order), sizeof(order));
@@ -115,13 +115,13 @@ void BTreeDisk<KeyType, AddressType>::writeHeader() {
 
 template <typename KeyType, typename AddressType>
 void BTreeDisk<KeyType, AddressType>::readHeader() {
-    std::ifstream indexFile(indexFilePath, std::ios::binary);
+    ifstream indexFile(indexFilePath, ios::binary);
     if (!indexFile) {
-        throw std::runtime_error("Não foi possível abrir o arquivo de índice para leitura (cabeçalho)");
+        throw runtime_error("Não foi possível abrir o arquivo de índice para leitura (cabeçalho)");
     }
 
     // Posiciona no início do arquivo
-    indexFile.seekg(0, std::ios::beg);
+    indexFile.seekg(0, ios::beg);
 
     // Lê o cabeçalho
     indexFile.read(reinterpret_cast<char*>(&order), sizeof(order));
@@ -133,13 +133,13 @@ void BTreeDisk<KeyType, AddressType>::readHeader() {
 
 template <typename KeyType, typename AddressType>
 void BTreeDisk<KeyType, AddressType>::writeNodeToDisk(const BTreeDiskNode<KeyType>& node) {
-    std::ofstream indexFile(indexFilePath, std::ios::binary | std::ios::out | std::ios::in);
+    ofstream indexFile(indexFilePath, ios::binary | ios::out | ios::in);
     if (!indexFile) {
-        indexFile.open(indexFilePath, std::ios::binary | std::ios::out);
+        indexFile.open(indexFilePath, ios::binary | ios::out);
     }
 
     if (!indexFile) {
-        throw std::runtime_error("Não foi possível abrir o arquivo de índice para escrita (nó)");
+        throw runtime_error("Não foi possível abrir o arquivo de índice para escrita (nó)");
     }
 
     // Calcula o tamanho do cabeçalho
@@ -187,9 +187,9 @@ BTreeDiskNode<KeyType> BTreeDisk<KeyType, AddressType>::readNodeFromDisk(int add
         return it->second;
     }
 
-    std::ifstream indexFile(indexFilePath, std::ios::binary);
+    ifstream indexFile(indexFilePath, ios::binary);
     if (!indexFile) {
-        throw std::runtime_error("Não foi possível abrir o arquivo de índice para leitura (nó)");
+        throw runtime_error("Não foi possível abrir o arquivo de índice para leitura (nó)");
     }
 
     // Calcula o tamanho do cabeçalho
@@ -444,19 +444,19 @@ void BTreeDisk<KeyType, AddressType>::printNode(int address, int level) const {
 
     // Imprime indentação conforme o nível
     for (int i = 0; i < level; i++) {
-        std::cout << "  ";
+        cout << "  ";
     }
 
     // Imprime as chaves do nó
-    std::cout << "[";
+    cout << "[";
     for (size_t i = 0; i < node.keys.size(); i++) {
-        std::cout << node.keys[i];
+        cout << node.keys[i];
         if (i < node.keys.size() - 1) {
-            std::cout << " ";
+            cout << " ";
         }
     }
-    std::cout << "] (Addr: " << node.address << ", Parent: " << node.parentAddress
-              << ", Leaf: " << (node.isLeaf ? "Yes" : "No") << ")" << std::endl;
+    cout << "] (Addr: " << node.address << ", Parent: " << node.parentAddress
+              << ", Leaf: " << (node.isLeaf ? "Yes" : "No") << ")" << endl;
 
     // Recursivamente imprime os filhos
     if (!node.isLeaf) {
@@ -469,11 +469,11 @@ void BTreeDisk<KeyType, AddressType>::printNode(int address, int level) const {
 template <typename KeyType, typename AddressType>
 void BTreeDisk<KeyType, AddressType>::printTree() const {
     if (rootAddress < 0) {
-        std::cout << "Árvore vazia" << std::endl;
+        cout << "Árvore vazia" << endl;
         return;
     }
 
-    std::cout << "Estrutura da Árvore B (ordem " << order << "):" << std::endl;
+    cout << "Estrutura da Árvore B (ordem " << order << "):" << endl;
     printNode(rootAddress, 0);
 }
 
@@ -481,7 +481,7 @@ void BTreeDisk<KeyType, AddressType>::printTree() const {
 template <typename KeyType, typename AddressType>
 void BTreeDisk<KeyType, AddressType>::remove(const KeyType& key) {
     // Implementação da remoção (opcional)
-    std::cout << "Método de remoção ainda não implementado" << std::endl;
+    cout << "Método de remoção ainda não implementado" << endl;
 }
 
 #endif // BTREE_DISK_H

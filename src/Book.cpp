@@ -1,41 +1,24 @@
-// Book.cpp
-#include "Book.h"
+#ifndef BOOK_H
+#define BOOK_H
 
-string Book::pack() const {
-    string data = to_string(id) + "|" + title + "|" + authors + "|" +
-                       to_string(year) + "|" + categories;
-    int size = data.length() + sizeof(int);
+#include <string>
+#include <sstream>
+#include <cstring>
+#include <functional>
 
-    string buffer;
-    buffer.resize(sizeof(int));
-    memcpy(&buffer[0], &size, sizeof(int));
-    buffer += data;
+using namespace std;
+using std::function; // Corrigido - agora está qualificado
 
-    return buffer;
-}
+class Book {
+public:
+    int id;
+    string title;
+    string authors;
+    int year;
+    string categories;
 
-bool Book::unpack(const string& buffer) {
-    if (buffer.size() < sizeof(int)) return false;
+    string pack() const;
+    bool unpack(const string& buffer);
+};
 
-    int size;
-    memcpy(&size, buffer.data(), sizeof(int));
-
-    string data = buffer.substr(sizeof(int));
-    stringstream ss(data);
-    string idStr, yearStr;
-
-    getline(ss, idStr, '|');
-    getline(ss, title, '|');
-    getline(ss, authors, '|');
-    getline(ss, yearStr, '|');
-    getline(ss, categories);
-
-    try {
-        id = stoi(idStr);
-        year = stoi(yearStr);
-    } catch (const exception& e) {
-        return false;
-    }
-
-    return true;
-}
+#endif

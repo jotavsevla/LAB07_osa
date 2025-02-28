@@ -3,6 +3,7 @@
 
 #include <string>
 #include <cstring>
+using namespace std;
 
 // Classe simples que representa um registro de inteiro
 class IntegerRecord {
