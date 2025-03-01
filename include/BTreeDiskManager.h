@@ -1,0 +1,8 @@
+//
+// Created by João on 01/03/25.
+//
+
+#ifndef LAB07_OSA_BTREEDISKMANAGER_H
+#define LAB07_OSA_BTREEDISKMANAGER_H
+
+#endif //LAB07_OSA_BTREEDISKMANAGER_H
